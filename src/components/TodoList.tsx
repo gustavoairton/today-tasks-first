@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
-import { Plus, Check, Trash2 } from 'lucide-react';
+import { Plus, Check, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 interface Todo {
   id: string;
@@ -17,7 +16,8 @@ interface Todo {
 const TodoList = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodoText, setNewTodoText] = useState('');
-  const [filter, setFilter] = useState<'all' | 'today'>('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [draggedTodo, setDraggedTodo] = useState<Todo | null>(null);
 
   // Load todos from localStorage on component mount
   useEffect(() => {
@@ -43,10 +43,11 @@ const TodoList = () => {
         text: newTodoText.trim(),
         completed: false,
         createdAt: new Date(),
-        isToday: true
+        isToday: false
       };
       setTodos([newTodo, ...todos]);
       setNewTodoText('');
+      setIsModalOpen(false);
     }
   };
 
@@ -60,164 +61,175 @@ const TodoList = () => {
     setTodos(todos.filter(todo => todo.id !== id));
   };
 
-  const isToday = (date: Date) => {
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
+  const moveToSection = (todoId: string, isToday: boolean) => {
+    setTodos(todos.map(todo => 
+      todo.id === todoId ? { ...todo, isToday } : todo
+    ));
   };
 
-  // Filter and sort todos
-  const filteredTodos = todos
-    .filter(todo => filter === 'all' || (filter === 'today' && isToday(todo.createdAt)))
-    .sort((a, b) => {
-      // Sort by completion status first (incomplete first)
-      if (a.completed !== b.completed) {
-        return a.completed ? 1 : -1;
-      }
-      // Then sort by creation date (newest first)
-      return b.createdAt.getTime() - a.createdAt.getTime();
-    });
+  const todayTodos = todos.filter(todo => todo.isToday).sort((a, b) => {
+    if (a.completed !== b.completed) {
+      return a.completed ? 1 : -1;
+    }
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
 
-  const todayTodosCount = todos.filter(todo => isToday(todo.createdAt) && !todo.completed).length;
-  const completedTodayCount = todos.filter(todo => isToday(todo.createdAt) && todo.completed).length;
+  const otherTodos = todos.filter(todo => !todo.isToday).sort((a, b) => {
+    if (a.completed !== b.completed) {
+      return a.completed ? 1 : -1;
+    }
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+
+  const handleDragStart = (e: React.DragEvent, todo: Todo) => {
+    setDraggedTodo(todo);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, isToday: boolean) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, isToday: boolean) => {
+    e.preventDefault();
+    if (draggedTodo && draggedTodo.isToday !== isToday) {
+      moveToSection(draggedTodo.id, isToday);
+    }
+    setDraggedTodo(null);
+  };
+
+  const TodoItem = ({ todo }: { todo: Todo }) => (
+    <div
+      draggable
+      onDragStart={(e) => handleDragStart(e, todo)}
+      className={`flex items-center gap-3 p-3 border border-gray-300 bg-white hover:bg-gray-50 cursor-move transition-colors ${
+        todo.completed ? 'opacity-60' : ''
+      }`}
+    >
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => toggleTodo(todo.id)}
+        className={`w-6 h-6 rounded-full p-0 border-2 ${
+          todo.completed 
+            ? 'bg-black text-white border-black' 
+            : 'bg-white border-gray-400 hover:border-black'
+        }`}
+      >
+        {todo.completed && <Check className="w-3 h-3" />}
+      </Button>
+      
+      <div className="flex-1">
+        <div className={`${todo.completed ? 'line-through text-gray-500' : 'text-black'}`}>
+          {todo.text}
+        </div>
+      </div>
+
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => deleteTodo(todo.id)}
+        className="w-6 h-6 p-0 text-gray-500 hover:text-black"
+      >
+        <Trash2 className="w-3 h-3" />
+      </Button>
+    </div>
+  );
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="max-w-2xl mx-auto p-6 space-y-8">
       <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        <h1 className="text-4xl font-bold text-black">
           My Todo List
         </h1>
-        <p className="text-muted-foreground">Stay organized and productive</p>
+        <p className="text-gray-600">Stay organized and productive</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-700">{todayTodosCount}</div>
-            <div className="text-sm text-blue-600">Tasks for today</div>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-          <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-700">{completedTodayCount}</div>
-            <div className="text-sm text-green-600">Completed today</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Add Todo */}
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Add New Task
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              placeholder="What needs to be done?"
-              value={newTodoText}
-              onChange={(e) => setNewTodoText(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addTodo()}
-              className="flex-1"
-            />
-            <Button onClick={addTodo} className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
-              <Plus className="w-4 h-4" />
+      {/* Add Todo Modal */}
+      <div className="flex justify-center">
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-black text-white hover:bg-gray-800">
+              <Plus className="w-4 h-4 mr-2" />
+              Add New Task
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filter Buttons */}
-      <div className="flex gap-2 justify-center">
-        <Button
-          variant={filter === 'all' ? 'default' : 'outline'}
-          onClick={() => setFilter('all')}
-          className={filter === 'all' ? 'bg-gradient-to-r from-blue-600 to-purple-600' : ''}
-        >
-          All Tasks ({todos.length})
-        </Button>
-        <Button
-          variant={filter === 'today' ? 'default' : 'outline'}
-          onClick={() => setFilter('today')}
-          className={filter === 'today' ? 'bg-gradient-to-r from-blue-600 to-purple-600' : ''}
-        >
-          Today ({todos.filter(todo => isToday(todo.createdAt)).length})
-        </Button>
+          </DialogTrigger>
+          <DialogContent className="bg-white border-2 border-black">
+            <DialogHeader>
+              <DialogTitle className="text-black">Add New Task</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                type="text"
+                placeholder="What needs to be done?"
+                value={newTodoText}
+                onChange={(e) => setNewTodoText(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+                className="border-2 border-gray-300 focus:border-black"
+              />
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsModalOpen(false)}
+                  className="border-2 border-gray-300 text-gray-700 hover:bg-gray-100"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={addTodo}
+                  className="bg-black text-white hover:bg-gray-800"
+                >
+                  Add Task
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {/* Todo List */}
-      <div className="space-y-3">
-        {filteredTodos.length === 0 ? (
-          <Card className="text-center py-8">
-            <CardContent>
-              <div className="text-muted-foreground">
-                {filter === 'today' ? 'No tasks for today yet!' : 'No tasks yet!'}
-              </div>
-              <div className="text-sm text-muted-foreground mt-1">
-                Add a task above to get started
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredTodos.map((todo) => (
-            <Card 
-              key={todo.id} 
-              className={`transition-all duration-200 hover:shadow-md ${
-                todo.completed ? 'bg-gray-50 opacity-75' : 'bg-white hover:bg-blue-50'
-              }`}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => toggleTodo(todo.id)}
-                    className={`w-8 h-8 rounded-full p-0 ${
-                      todo.completed 
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                        : 'bg-gray-100 hover:bg-blue-100'
-                    }`}
-                  >
-                    {todo.completed && <Check className="w-4 h-4" />}
-                  </Button>
-                  
-                  <div className="flex-1">
-                    <div className={`${todo.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                      {todo.text}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-gray-500">
-                        {todo.createdAt.toLocaleDateString()}
-                      </span>
-                      {isToday(todo.createdAt) && (
-                        <Badge variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                          Today
-                        </Badge>
-                      )}
-                      {todo.completed && (
-                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                          Done
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
+      {/* To-do Today Section */}
+      <div className="space-y-4">
+        <h2 className="text-2xl font-bold text-black">To-do today</h2>
+        <div
+          onDragOver={(e) => handleDragOver(e, true)}
+          onDrop={(e) => handleDrop(e, true)}
+          className={`min-h-[100px] p-4 border-2 border-dashed border-gray-300 space-y-2 ${
+            draggedTodo && !draggedTodo.isToday ? 'border-black bg-gray-50' : ''
+          }`}
+        >
+          {todayTodos.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No tasks for today. Drag tasks here or add new ones.
+            </div>
+          ) : (
+            todayTodos.map((todo) => (
+              <TodoItem key={todo.id} todo={todo} />
+            ))
+          )}
+        </div>
+      </div>
 
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => deleteTodo(todo.id)}
-                    className="w-8 h-8 p-0 text-red-500 hover:bg-red-50 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
+      {/* Other Tasks Section */}
+      <div className="space-y-4">
+        <h2 className="text-2xl font-bold text-black">Other tasks</h2>
+        <div
+          onDragOver={(e) => handleDragOver(e, false)}
+          onDrop={(e) => handleDrop(e, false)}
+          className={`min-h-[100px] p-4 border-2 border-dashed border-gray-300 space-y-2 ${
+            draggedTodo && draggedTodo.isToday ? 'border-black bg-gray-50' : ''
+          }`}
+        >
+          {otherTodos.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No other tasks. Drag tasks here from today section.
+            </div>
+          ) : (
+            otherTodos.map((todo) => (
+              <TodoItem key={todo.id} todo={todo} />
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
